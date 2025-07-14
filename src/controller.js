@@ -1,126 +1,127 @@
-const db = require('./database');
+// src/controller.js
+import pool from './database.js';
 
-// GET: Obtener todos los libros
-const getLibros = (req, res) => {
-  const sql = 'SELECT * FROM libros';
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.error('Error en getLibros:', err.message);
-      res.status(500).json({ error: 'Error al obtener los libros', detalle: err.message });
-    } else {
-      res.json(result);
-    }
-  });
-};
-
-// GET: Obtener un libro por ID
-const getLibroById = (req, res) => {
-  const { id } = req.params;
-  const sql = 'SELECT * FROM libros WHERE id = ?';
-  db.query(sql, [id], (err, result) => {
-    if (err) {
-      console.error('Error en getLibroById:', err.message);
-      res.status(500).json({ error: 'Error al obtener el libro', detalle: err.message });
-    } else if (result.length === 0) {
-      res.status(404).json({ error: 'Libro no encontrado' });
-    } else {
-      res.json(result[0]);
-    }
-  });
-};
-
-// POST: Crear un nuevo libro
-// POST /libros - Crear libro
-const createLibro = async (req, res) => {
-  const { titulo, autor, anio, isbn } = req.body;
-
-  // VALIDACIÓN DE CAMPOS INVÁLIDOS
-  const camposPermitidos = ["titulo", "autor", "anio", "isbn"];
-  const camposEnviados = Object.keys(req.body);
-  const camposInvalidos = camposEnviados.filter(campo => !camposPermitidos.includes(campo));
-
-  if (camposInvalidos.length > 0) {
-    return res.status(400).json({
-      error: `Campos inválidos detectados: ${camposInvalidos.join(", ")}`
-    });
-  }
-
+// GET todos los libros
+const obtenerLibros = async (req, res) => {
   try {
-    const [result] = await pool.query(
-      "INSERT INTO libros (titulo, autor, anio, isbn) VALUES (?, ?, ?, ?)",
-      [titulo, autor, anio, isbn]
-    );
-
-    const libroNuevo = {
-      id: result.insertId,
-      titulo,
-      autor,
-      anio,
-      isbn
-    };
-
-    res.status(201).json(libroNuevo);
-  } catch (error) {
-    console.error("Error al crear el libro:", error);
-    res.status(500).json({ error: "Error al crear el libro - Detalle: " + error.message });
+    const [rows] = await pool.query('SELECT * FROM libros');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener libros', detalle: err.message });
   }
 };
 
-
-// PUT: Actualizar un libro por ID
-const updateLibro = (req, res) => {
+// GET un libro por ID
+const obtenerLibro = async (req, res) => {
   try {
     const { id } = req.params;
-    const { titulo, autor, anio, isbn, precio, stock } = req.body;
+    const [rows] = await pool.query('SELECT * FROM libros WHERE id = ?', [id]);
 
-    const sql = 'UPDATE libros SET titulo = ?, autor = ?, anio = ?, isbn = ?, precio = ?, stock = ? WHERE id = ?';
-    db.query(sql, [titulo, autor, anio, isbn, precio, stock, id], (err, result) => {
-      if (err) {
-        console.error('Error en updateLibro:', err.message);
-        return res.status(500).json({ error: 'Error al actualizar el libro', detalle: err.message });
-      }
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Libro no encontrado' });
+    }
 
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ error: 'Libro no encontrado' });
-      }
-
-      res.json({ id, titulo, autor, anio, isbn, precio, stock });
-    });
-  } catch (error) {
-    console.error('Excepción en updateLibro:', error.message);
-    res.status(500).json({ error: 'Error inesperado', detalle: error.message });
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener libro', detalle: err.message });
   }
 };
 
-// DELETE: Eliminar un libro por ISBN (sin guiones)
-const deleteLibroByIsbn = (req, res) => {
+// POST - Crear libro
+const crearLibro = async (req, res) => {
+  try {
+    const datos = req.body;
+    const camposPermitidos = ['nombre', 'autor', 'categoria', 'año-publicacion', 'isbn'];
+    const camposInvalidos = Object.keys(datos).filter(c => !camposPermitidos.includes(c));
+
+    if (camposInvalidos.length > 0) {
+      return res.status(400).json({
+        error: `Campos inválidos detectados: ${camposInvalidos.join(', ')}`
+      });
+    }
+
+    const { nombre, autor, categoria, isbn } = datos;
+    const anioPublicacion = datos["año-publicacion"];
+
+    if (!nombre || !autor || !categoria || !anioPublicacion || !isbn) {
+      return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    }
+
+    const [result] = await pool.query(
+      'INSERT INTO libros (nombre, autor, categoria, `año-publicacion`, isbn) VALUES (?, ?, ?, ?, ?)',
+      [nombre, autor, categoria, anioPublicacion, isbn]
+    );
+
+    res.status(201).json({
+      id: result.insertId,
+      nombre,
+      autor,
+      categoria,
+      "año-publicacion": anioPublicacion,
+      isbn
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al crear libro', detalle: err.message });
+  }
+};
+
+// PUT - Actualizar libro
+export async function updateLibro(req, res) {
+  try {
+    const id = req.params.id;
+    const datos = req.body;
+
+    const camposValidos = ["nombre", "autor", "categoria", "año-publicacion", "isbn"];
+    const camposInvalidos = Object.keys(datos).filter(campo => !camposValidos.includes(campo));
+
+    if (camposInvalidos.length > 0) {
+      return res.status(400).json({ error: `Campos inválidos detectados: ${camposInvalidos.join(", ")}` });
+    }
+
+    const [result] = await pool.query("SELECT * FROM libros WHERE id = ?", [id]);
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: "Libro no encontrado" });
+    }
+
+    await pool.query(
+      "UPDATE libros SET nombre = ?, autor = ?, categoria = ?, `año-publicacion` = ?, isbn = ? WHERE id = ?",
+      [datos.nombre, datos.autor, datos.categoria, datos["año-publicacion"], datos.isbn, id]
+    );
+
+    res.json({ id, ...datos });
+  } catch (error) {
+    console.error("Error al actualizar libro:", error);
+    res.status(500).json({ error: "Error al actualizar libro" });
+  }
+}
+
+
+// DELETE - Eliminar por ISBN
+const eliminarLibro = async (req, res) => {
   try {
     let { isbn } = req.params;
-    isbn = isbn.replace(/-/g, ''); // quitar guiones
-    const sql = 'DELETE FROM libros WHERE REPLACE(isbn, "-", "") = ?';
+    isbn = isbn.replace(/-/g, '');
 
-    db.query(sql, [isbn], (err, result) => {
-      if (err) {
-        console.error('Error en deleteLibroByIsbn:', err.message);
-        return res.status(500).json({ error: 'Error al eliminar el libro', detalle: err.message });
-      }
+    const [result] = await pool.query(
+      'DELETE FROM libros WHERE REPLACE(isbn, "-", "") = ?',
+      [isbn]
+    );
 
-      if (result.affectedRows === 0) {
-        return res.status(404).json({ error: 'Libro no encontrado' });
-      }
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Libro no encontrado para eliminar' });
+    }
 
-      res.json({ mensaje: 'Libro eliminado correctamente' });
-    });
-  } catch (error) {
-    console.error('Excepción en deleteLibroByIsbn:', error.message);
-    res.status(500).json({ error: 'Error inesperado', detalle: error.message });
+    res.json({ mensaje: 'Libro eliminado correctamente' });
+  } catch (err) {
+    res.status(500).json({ error: 'Error al eliminar libro', detalle: err.message });
   }
 };
 
-module.exports = {
-  getLibros,
-  getLibroById,
-  createLibro,
-  updateLibro,
-  deleteLibroByIsbn
+export {
+  obtenerLibros,
+  obtenerLibro,
+  crearLibro,
+  actualizarLibro,
+  eliminarLibro
 };
